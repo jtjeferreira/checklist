@@ -1,7 +1,7 @@
 package checklist
 
-import cats.data.Ior
-import cats.instances.list._
+import scalaz.{\&/ => Ior}
+import scalaz.std.list._
 import org.scalatest._
 import scala.language.higherKinds
 
@@ -38,12 +38,12 @@ class ReadmeSpec extends FreeSpec with Matchers {
   "example from the readme" - {
     "should validate a valid person" in {
       val bananaman = Person("Eric Wimp", 11, Address(29, "Acacia Road"))
-      personValidator(bananaman) should be(Ior.right(bananaman))
+      personValidator(bananaman) should be(Ior.That(bananaman))
     }
 
     "should validate an invalid person" in {
       val invalid = Person("", 0, Address(0, ""))
-      personValidator(invalid) should be(Ior.both(
+      personValidator(invalid) should be(Ior.Both(
         errors(
           ("name"                :: PNil) -> "Must not be empty",
           ("age"                 :: PNil) -> "Must be greater than or equal to 1",
@@ -56,7 +56,7 @@ class ReadmeSpec extends FreeSpec with Matchers {
 
     "should correct factual errors about bananaman" in {
       val bananaman = Person("Eric Wimp", 11, Address(30, "Acacia Road"))
-      personValidator(bananaman) should be(Ior.both(
+      personValidator(bananaman) should be(Ior.Both(
         warnings(
           ("address" :: "house" :: PNil) -> "There are only 29 houses on Acacia Road"
         ),

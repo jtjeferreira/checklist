@@ -1,6 +1,6 @@
 package checklist
 
-import cats.data.NonEmptyList
+import scalaz.NonEmptyList
 
 abstract class ToMessage[A] {
   def toError(value: A): Message
@@ -29,8 +29,8 @@ object ToMessage {
 
 trait MessageConstructors {
   def errors[A](head: A, tail: A *)(implicit promoter: ToMessage[A]): NonEmptyList[Message] =
-    NonEmptyList.of(head, tail : _*).map(promoter.toError)
+    NonEmptyList.nels(head, tail : _*).map(promoter.toError)
 
   def warnings[A](head: A, tail: A *)(implicit promoter: ToMessage[A]): NonEmptyList[Message] =
-    NonEmptyList.of(head, tail : _*).map(promoter.toWarning)
+    NonEmptyList.nels(head, tail : _*).map(promoter.toWarning)
 }

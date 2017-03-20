@@ -1,9 +1,8 @@
 package checklist
 
-import cats.{Applicative, Traverse}
-import cats.data.Ior
-import cats.syntax.functor._
-import cats.syntax.traverse._
+import scalaz.{Applicative, Traverse}
+import scalaz.{\&/ => Ior}
+import scalaz.syntax.traverse._
 import monocle.{PLens, Lens}
 import scala.language.experimental.macros
 import scala.language.higherKinds
@@ -28,23 +27,23 @@ sealed abstract class Rule[A, B] {
   def zip[C](that: Rule[A, C]): Rule[A, (B, C)] =
     Rule.pure { a =>
       this(a) match {
-        case Ior.Left(msg1) =>
+        case Ior.This(msg1) =>
           that(a) match {
-            case Ior.Left(msg2)    => Ior.left(msg1 concat msg2)
-            case Ior.Right(c)      => Ior.left(msg1)
-            case Ior.Both(msg2, c) => Ior.left(msg1 concat msg2)
+            case Ior.This(msg2)    => Ior.This(msg1 append msg2)
+            case Ior.That(c)       => Ior.This(msg1)
+            case Ior.Both(msg2, c) => Ior.This(msg1 append msg2)
           }
-        case Ior.Right(b) =>
+        case Ior.That(b) =>
           that(a) match {
-            case Ior.Left(msg2)    => Ior.left(msg2)
-            case Ior.Right(c)      => Ior.right((b, c))
-            case Ior.Both(msg2, c) => Ior.both(msg2, (b, c))
+            case Ior.This(msg2)    => Ior.This(msg2)
+            case Ior.That(c)       => Ior.That((b, c))
+            case Ior.Both(msg2, c) => Ior.Both(msg2, (b, c))
           }
         case Ior.Both(msg1, b) =>
           that(a) match {
-            case Ior.Left(msg2)    => Ior.left(msg1 concat msg2)
-            case Ior.Right(c)      => Ior.both(msg1, (b, c))
-            case Ior.Both(msg2, c) => Ior.both(msg1 concat msg2, (b, c))
+            case Ior.This(msg2)    => Ior.This(msg1 append msg2)
+            case Ior.That(c)       => Ior.Both(msg1, (b, c))
+            case Ior.Both(msg2, c) => Ior.Both(msg1 append msg2, (b, c))
           }
       }
     }
@@ -60,13 +59,13 @@ sealed abstract class Rule[A, B] {
             this(value) leftMap (_ map (_ prefix index))
         }
 
-      results.sequence
+      results.sequenceU
     }
 
   def opt: Rule[Option[A], Option[B]] =
     Rule.pure {
       case Some(value) => this(value) map (Some(_))
-      case None        => Ior.right(None)
+      case None        => Ior.That(None)
     }
 
   def req: Rule[Option[A], B] =
@@ -75,7 +74,7 @@ sealed abstract class Rule[A, B] {
   def req(messages: Messages): Rule[Option[A], B] =
     Rule.pure {
       case Some(value) => this(value)
-      case None        => Ior.left(messages)
+      case None        => Ior.This(messages)
     }
 
   def prefix[P: PathPrefix](prefix: P): Rule[A, B] =
@@ -102,10 +101,10 @@ trait BaseRules {
     }
 
   def pass[A]: Rule[A, A] =
-    pure(Ior.right)
+    pure(Ior.That.apply)
 
   def fail[A](messages: Messages): Rule[A, A] =
-    pure(Ior.both(messages, _))
+    pure(Ior.Both(messages, _))
 }
 
 /** Rules that convert one type to another. */
@@ -116,22 +115,22 @@ trait ConverterRules {
     parseInt(errors("Must be a whole number"))
 
   def parseInt(messages: Messages): Rule[String, Int] =
-    pure(value => util.Try(value.toInt).toOption.map(Ior.right).getOrElse(Ior.left(messages)))
+    pure(value => util.Try(value.toInt).toOption.map(Ior.That.apply).getOrElse(Ior.This(messages)))
 
   val parseDouble: Rule[String, Double] =
     parseDouble(errors("Must be a number"))
 
   def parseDouble(messages: Messages): Rule[String, Double] =
-    pure(value => util.Try(value.toDouble).toOption.map(Ior.right).getOrElse(Ior.left(messages)))
+    pure(value => util.Try(value.toDouble).toOption.map(Ior.That.apply).getOrElse(Ior.This(messages)))
 
   def mapValue[A: PathPrefix, B](key: A): Rule[Map[A, B], B] =
     mapValue[A, B](key, errors(s"Value not found"))
 
   def mapValue[A: PathPrefix, B](key: A, messages: Messages): Rule[Map[A, B], B] =
-    pure(map => map.get(key).map(Ior.right).getOrElse(Ior.left(messages map (_ prefix key))))
+    pure(map => map.get(key).map(Ior.That.apply).getOrElse(Ior.This(messages map (_ prefix key))))
 
   val trimString: Rule[String, String] =
-    pure(value => Ior.right(value.trim))
+    pure(value => Ior.That(value.trim))
 }
 
 /** Rules that test a property of an existing value. */
@@ -139,7 +138,7 @@ trait PropertyRules {
   self: BaseRules =>
 
   def test[A](messages: => Messages)(func: A => Boolean): Rule[A, A] =
-    pure(value => if(func(value)) Ior.right(value) else Ior.both(messages, value))
+    pure(value => if(func(value)) Ior.That(value) else Ior.Both(messages, value))
 
   def eql[A](comp: A): Rule[A, A] =
     eql(comp, errors(s"Must be ${comp}"))
@@ -232,19 +231,19 @@ trait RuleInstances {
 
   implicit def ruleApplicative[A]: Applicative[Rule[A, ?]] =
     new Applicative[Rule[A, ?]] {
-      def pure[B](value: B): Rule[A, B] =
-        Rule.pure(_ => Ior.right(value))
+      def point[B](value: => B): Rule[A, B] =
+        Rule.pure(_ => Ior.That(value))
 
-      def ap[B, C](funcRule: Rule[A, B => C])(argRule: Rule[A, B]): Rule[A, C] =
-        (funcRule zip argRule) map { pair =>
-          val (func, arg) = pair
-          func(arg)
-        }
+      def ap[B, C](fa: => checklist.Rule[A,B])(f: => checklist.Rule[A,B => C]): Rule[A, C] =
+          (f zip fa) map { pair =>
+            val (func, arg) = pair
+            func(arg)
+          }
 
       override def map[B, C](rule: Rule[A, B])(func: B => C): Rule[A, C] =
         rule map func
 
-      override def product[B, C](rule1: Rule[A, B], rule2: Rule[A, C]): Rule[A, (B, C)] =
+      def product[B, C](rule1: Rule[A, B], rule2: Rule[A, C]): Rule[A, (B, C)] =
         rule1 zip rule2
     }
 }

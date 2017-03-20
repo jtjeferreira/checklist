@@ -13,10 +13,10 @@ libraryDependencies ++= Seq(
 
 libraryDependencies ++= Seq(
   "org.scala-lang"              % "scala-reflect"            % scalaVersion.value,
-  "org.typelevel"              %% "cats"                     % "0.7.0-SNAPSHOT",
+  "org.scalaz"                 %% "scalaz-core"              % "7.2.10",
   // "org.scala-lang.modules"     %% "scala-parser-combinators" % "1.0.1",
-  "com.github.julien-truffaut" %% "monocle-core"             % "1.2.2",
-  "com.github.julien-truffaut" %% "monocle-macro"            % "1.2.2"
+  "com.github.julien-truffaut" %% "monocle-core"             % "1.3.2",
+  "com.github.julien-truffaut" %% "monocle-macro"            % "1.3.2"
 )
 
 libraryDependencies ++= Seq(

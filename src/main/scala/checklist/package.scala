@@ -1,4 +1,5 @@
-import cats.data.{Ior, NonEmptyList}
+import scalaz.NonEmptyList
+import scalaz.{\&/ => Ior}
 
 package object checklist {
   type Messages   = NonEmptyList[Message]
